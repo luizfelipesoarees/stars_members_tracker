@@ -1,0 +1,10 @@
+<h1>Editar Membro</h1>
+<form method="POST" action="/edit/<%= member.id %>">
+  <input name="nome" value="<%= member.nome %>" required />
+  <input name="codinome" value="<%= member.codinome %>" required />
+  <input name="funcao" value="<%= member.funcao %>" required />
+  <input name="status" value="<%= member.status %>" required />
+  <input name="nivel" type="number" value="<%= member.nivel %>" required />
+  <button type="submit">Atualizar</button>
+</form>
+<a href="/">Voltar</a>
