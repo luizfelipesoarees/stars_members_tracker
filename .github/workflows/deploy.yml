@@ -9,8 +9,6 @@ jobs:
   build-push:
     name: Build e Push das Imagens Docker
     runs-on: ubuntu-latest
-    outputs:
-      image: ${{ steps.set-image.outputs.image }}
     steps:
       - name: Checkout do código
         uses: actions/checkout@v3
@@ -27,59 +25,41 @@ jobs:
       - name: Push da imagem Docker para Docker Hub
         run: docker push ${{ secrets.DOCKER_HUB_USERNAME }}/stars-members-tracker:latest
 
-  start-sonarqube:
-    name: Iniciar container SonarQube no servidor remoto
+  sonar-analysis:
+    name: Análise de Código com SonarQube
     runs-on: ubuntu-latest
     needs: build-push
     steps:
-      - name: SSH para servidor e iniciar SonarQube
+      - name: Checkout do código
+        uses: actions/checkout@v3
+
+      - name: Iniciar SonarQube no servidor remoto
         uses: appleboy/ssh-action@master
         with:
           host: 201.23.3.86
           username: aluno
           key: ${{ secrets.SSH_PRIVATE_KEY }}
           script: |
-            # Para e remove container antigo (se existir)
             docker stop sonarqube || true
             docker rm sonarqube || true
-
-            # Inicia o SonarQube na porta 8172
             docker run -d --name sonarqube -p 8172:9000 sonarqube
-
             echo "Aguardando SonarQube iniciar..."
             sleep 120
 
-  sonar-analysis:
-    name: Análise de Código com SonarQube
-    runs-on: ubuntu-latest
-    needs: start-sonarqube
-    steps:
-      - name: Checkout do código
-        uses: actions/checkout@v3
-
-      - name: Instalar Sonar Scanner CLI
+      - name: Instalar Sonar Scanner CLI e rodar análise
         run: |
           sudo apt update && sudo apt install -y unzip openjdk-11-jre wget
           wget https://binaries.sonarsource.com/Distribution/sonar-scanner-cli/sonar-scanner-cli-5.0.1.3006-linux.zip
           unzip sonar-scanner-cli-5.0.1.3006-linux.zip
-          export PATH=$PATH:$PWD/sonar-scanner-5.0.1.3006-linux/bin
-          echo "$PATH"
-
-      - name: Rodar análise sonar-scanner apontando para SonarQube remoto
-        run: |
           ./sonar-scanner-5.0.1.3006-linux/bin/sonar-scanner \
             -Dsonar.projectKey=stars-members-tracker \
             -Dsonar.sources=. \
+            -Dsonar.inclusions=**/*.js \
             -Dsonar.host.url=http://201.23.3.86:8172 \
             -Dsonar.login=admin \
             -Dsonar.password=admin
 
-  stop-sonarqube:
-    name: Parar container SonarQube no servidor remoto
-    runs-on: ubuntu-latest
-    needs: sonar-analysis
-    steps:
-      - name: SSH para servidor e parar SonarQube
+      - name: Parar e remover container SonarQube
         uses: appleboy/ssh-action@master
         with:
           host: 201.23.3.86
@@ -92,7 +72,7 @@ jobs:
   deploy-remote:
     name: Deploy Remoto via Docker Run
     runs-on: ubuntu-latest
-    needs: stop-sonarqube
+    needs: sonar-analysis
     steps:
       - name: SSH para o servidor e deploy da nova versão
         uses: appleboy/ssh-action@master
@@ -101,14 +81,9 @@ jobs:
           username: aluno
           key: ${{ secrets.SSH_PRIVATE_KEY }}
           script: |
-            # Parar e remover app antigo
             docker stop stars-app || true
             docker rm stars-app || true
-
-            # Puxar imagem nova
             docker pull ${{ secrets.DOCKER_HUB_USERNAME }}/stars-members-tracker:latest
-
-            # Subir container com nova versão
             docker run -d \
               --name stars-app \
               --restart always \
