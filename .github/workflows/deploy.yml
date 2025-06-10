@@ -20,7 +20,9 @@ jobs:
           password: ${{ secrets.DOCKER_HUB_TOKEN }}
 
       - name: Build da imagem Docker backend
-        run: docker build -t ${{ secrets.DOCKER_HUB_USERNAME }}/stars-members-tracker:latest .
+        run: |
+          cd backend
+          docker build -t ${{ secrets.DOCKER_HUB_USERNAME }}/stars-members-tracker:latest .
 
       - name: Push da imagem Docker backend para Docker Hub
         run: docker push ${{ secrets.DOCKER_HUB_USERNAME }}/stars-members-tracker:latest
@@ -49,7 +51,12 @@ jobs:
           java-version: '17'
           distribution: 'temurin'
 
-      - name: Iniciar e Verificar SonarQube no servidor remoto
+      - name: Setup Node.js (necessário para projetos JS)
+        uses: actions/setup-node@v3
+        with:
+          node-version: '18'
+
+      - name: Iniciar SonarQube no servidor remoto
         uses: appleboy/ssh-action@v1.0.3
         with:
           host: 201.23.3.86
@@ -61,7 +68,6 @@ jobs:
             docker run -d --name sonarqube -p 8172:9000 sonarqube:lts-community
             echo "Aguardando SonarQube iniciar..."
             sleep 100
-            docker ps
 
       - name: Download e Configuração do SonarScanner
         run: |
@@ -104,7 +110,6 @@ jobs:
           username: aluno
           key: ${{ secrets.SSH_PRIVATE_KEY }}
           script: |
-            # Variáveis
             BACK_IMAGE="${{ secrets.DOCKER_HUB_USERNAME }}/stars-members-tracker:latest"
             FRONT_IMAGE="${{ secrets.DOCKER_HUB_USERNAME }}/stars-members-tracker-frontend:latest"
             DB_IMAGE="postgres:15-alpine"
@@ -114,18 +119,13 @@ jobs:
             DB_CONTAINER="stars-db"
             NETWORK_NAME="stars-network"
 
-            # Criar rede Docker (se não existir)
             docker network create $NETWORK_NAME || true
-
-            # Parar e remover containers antigos
             docker rm -f $BACK_CONTAINER $FRONT_CONTAINER $DB_CONTAINER || true
 
-            # Puxar imagens mais recentes
             docker pull $BACK_IMAGE
             docker pull $FRONT_IMAGE
             docker pull $DB_IMAGE
 
-            # Subir container do banco PostgreSQL
             docker run -d --name $DB_CONTAINER --network $NETWORK_NAME --restart always \
               -e POSTGRES_USER=stars_user \
               -e POSTGRES_PASSWORD=stars_password \
@@ -137,9 +137,8 @@ jobs:
             echo "Aguardando o banco de dados iniciar..."
             sleep 15
 
-            # Subir container backend
             docker run -d --name $BACK_CONTAINER --network $NETWORK_NAME --restart always \
-              -e DB_HOST=$DB_CONTAINER \
+              -e DB_HOST=db \
               -e DB_PORT=5432 \
               -e DB_USER=stars_user \
               -e DB_PASS=stars_password \
@@ -148,7 +147,6 @@ jobs:
               -p 8170:8170 \
               $BACK_IMAGE
 
-            # Subir container frontend
             docker run -d --name $FRONT_CONTAINER --network $NETWORK_NAME --restart always \
               -p 8171:80 \
               $FRONT_IMAGE
