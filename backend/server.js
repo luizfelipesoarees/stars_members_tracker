@@ -1,8 +1,11 @@
 const express = require('express');
+const cors = require('cors'); // ⬅️ AQUI
 const { Sequelize, DataTypes } = require('sequelize');
 
 const app = express();
+app.use(cors({ origin: 'http://localhost:8171' })); 
 app.use(express.json());
+;
 
 // Database connection
 const sequelize = new Sequelize(

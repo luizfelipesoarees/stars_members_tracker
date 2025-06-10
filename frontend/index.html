@@ -1,0 +1,37 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+    <link href="https://fonts.googleapis.com/css2?family=Poppins:wght@400;600;700&display=swap" rel="stylesheet">
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>S.T.A.R.S. Members Tracker - Resident Evil</title>
+    <link rel="stylesheet" href="css/style.css">
+</head>
+<body>
+    <div class="container">
+        <h1>⭐ S.T.A.R.S. Members Database</h1>
+        <p class="subtitle">Desenvolvido por: Luiz Felipe Soares</p>
+
+        <!-- Formulário para adicionar membros -->
+        <form id="add-member-form">
+            <h2>Adicionar Novo Membro</h2>
+            <input type="text" id="name" placeholder="Nome" required>
+            <input type="text" id="rank" placeholder="Patente">
+            <select id="status">
+                <option value="active">Ativo</option>
+                <option value="missing">Desaparecido</option>
+                <option value="deceased">Falecido</option>
+            </select>
+            <button type="submit">Adicionar</button>
+        </form>
+
+        <!-- Lista de membros -->
+        <div id="members-list">
+            <h2>Lista de Membros</h2>
+            <div id="members-container"></div>
+        </div>
+    </div>
+
+    <script src="js/app.js"></script>
+</body>
+</html>

@@ -25,5 +25,14 @@ services:
       DB_PASS: stars_password
       DB_NAME: stars_db
 
+  frontend:
+    image: nginx:alpine
+    ports:
+      - "8171:80"
+    volumes:
+      - ./frontend:/usr/share/nginx/html
+    depends_on:
+      - app
+
 volumes:
   pgdata:
