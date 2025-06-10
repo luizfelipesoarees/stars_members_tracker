@@ -19,11 +19,19 @@ jobs:
           username: ${{ secrets.DOCKER_HUB_USERNAME }}
           password: ${{ secrets.DOCKER_HUB_TOKEN }}
 
-      - name: Build da imagem Docker
+      - name: Build da imagem Docker backend
         run: docker build -t ${{ secrets.DOCKER_HUB_USERNAME }}/stars-members-tracker:latest .
 
-      - name: Push da imagem Docker para Docker Hub
+      - name: Push da imagem Docker backend para Docker Hub
         run: docker push ${{ secrets.DOCKER_HUB_USERNAME }}/stars-members-tracker:latest
+
+      - name: Build da imagem Docker frontend
+        run: |
+          cd frontend
+          docker build -t ${{ secrets.DOCKER_HUB_USERNAME }}/stars-members-tracker-frontend:latest .
+
+      - name: Push da imagem Docker frontend para Docker Hub
+        run: docker push ${{ secrets.DOCKER_HUB_USERNAME }}/stars-members-tracker-frontend:latest
 
   sonar-analysis:
     name: Análise de Código com SonarQube
@@ -96,17 +104,56 @@ jobs:
           username: aluno
           key: ${{ secrets.SSH_PRIVATE_KEY }}
           script: |
-            docker stop stars-app || true
-            docker rm stars-app || true
-            docker pull ${{ secrets.DOCKER_HUB_USERNAME }}/stars-members-tracker:latest
-            docker run -d \
-              --name stars-app \
-              --restart always \
-              -p 8170:8170 \
-              -e DB_HOST=db \
-              -e DB_PORT=8175 \
+            # Variáveis
+            BACK_IMAGE="${{ secrets.DOCKER_HUB_USERNAME }}/stars-members-tracker:latest"
+            FRONT_IMAGE="${{ secrets.DOCKER_HUB_USERNAME }}/stars-members-tracker-frontend:latest"
+            DB_IMAGE="postgres:15-alpine"
+
+            BACK_CONTAINER="stars-app"
+            FRONT_CONTAINER="stars-front"
+            DB_CONTAINER="stars-db"
+            NETWORK_NAME="stars-network"
+
+            # Criar rede Docker (se não existir)
+            docker network create $NETWORK_NAME || true
+
+            # Parar e remover containers antigos
+            docker rm -f $BACK_CONTAINER $FRONT_CONTAINER $DB_CONTAINER || true
+
+            # Puxar imagens mais recentes
+            docker pull $BACK_IMAGE
+            docker pull $FRONT_IMAGE
+            docker pull $DB_IMAGE
+
+            # Subir container do banco PostgreSQL
+            docker run -d --name $DB_CONTAINER --network $NETWORK_NAME --restart always \
+              -e POSTGRES_USER=stars_user \
+              -e POSTGRES_PASSWORD=stars_password \
+              -e POSTGRES_DB=stars_db \
+              -p 8175:5432 \
+              -v postgres_data:/var/lib/postgresql/data \
+              $DB_IMAGE
+
+            echo "Aguardando o banco de dados iniciar..."
+            sleep 15
+
+            # Subir container backend
+            docker run -d --name $BACK_CONTAINER --network $NETWORK_NAME --restart always \
+              -e DB_HOST=$DB_CONTAINER \
+              -e DB_PORT=5432 \
               -e DB_USER=stars_user \
               -e DB_PASS=stars_password \
               -e DB_NAME=stars_db \
               -e APP_PORT=8170 \
-              ${{ secrets.DOCKER_HUB_USERNAME }}/stars-members-tracker:latest
+              -p 8170:8170 \
+              $BACK_IMAGE
+
+            # Subir container frontend
+            docker run -d --name $FRONT_CONTAINER --network $NETWORK_NAME --restart always \
+              -p 8171:80 \
+              $FRONT_IMAGE
+
+            echo "-----------------------------------------------------"
+            echo "Containers ativos:"
+            docker ps
+            echo "-----------------------------------------------------"
