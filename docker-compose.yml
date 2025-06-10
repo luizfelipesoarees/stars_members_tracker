@@ -2,31 +2,28 @@ version: '3.8'
 
 services:
   db:
-    image: postgres:14
-    container_name: postgres_stars
-    restart: always
+    image: postgres:15-alpine
     environment:
-      POSTGRES_DB: starsdb
-      POSTGRES_USER: postgres
-      POSTGRES_PASSWORD: postgres
+      POSTGRES_USER: stars_user
+      POSTGRES_PASSWORD: stars_password
+      POSTGRES_DB: stars_db
     ports:
-      - "5433:5432"
+      - "8175:5432"
     volumes:
       - pgdata:/var/lib/postgresql/data
 
   app:
-    build: .
-    container_name: stars_app
+    build: ./backend
     ports:
-      - "3000:3000"
+      - "8170:8170"
     depends_on:
       - db
     environment:
-      - DB_HOST=db
-      - DB_PORT=5432
-      - DB_USER=postgres
-      - DB_PASSWORD=postgres
-      - DB_NAME=starsdb
+      DB_HOST: db
+      DB_PORT: 5432
+      DB_USER: stars_user
+      DB_PASS: stars_password
+      DB_NAME: stars_db
 
 volumes:
   pgdata:
