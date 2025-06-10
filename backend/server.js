@@ -3,23 +3,7 @@ const cors = require('cors');
 const { Sequelize, DataTypes } = require('sequelize');
 
 const app = express();
-
-const allowedOrigins = [
-  'http://localhost:8171',
-  'http://201.23.3.86:8171'
-];
-
-app.use(cors({
-  origin: function(origin, callback){
-    if(!origin) return callback(null, true);  // permite requisições sem origem (Postman, etc)
-    if(allowedOrigins.indexOf(origin) === -1){
-      const msg = 'The CORS policy for this site does not allow access from the specified Origin.';
-      return callback(new Error(msg), false);
-    }
-    return callback(null, true);
-  }
-}));
-
+app.use(cors({ origin: ['http://localhost:8171', 'http://201.23.3.86:8171'] }));
 app.use(express.json());
 
 // Database connection
@@ -144,10 +128,10 @@ async function startServer() {
   try {
     await sequelize.authenticate();
     console.log('Connection to database has been established successfully.');
-    
+
     await sequelize.sync({ alter: true });
     console.log('Database synchronized');
-    
+
     const PORT = process.env.APP_PORT || 8170;
     app.listen(PORT, () => {
       console.log(`Server running on port ${PORT}`);
