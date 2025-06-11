@@ -80,7 +80,7 @@ jobs:
           sonar-scanner \
             -Dsonar.projectKey=stars-members-tracker \
             -Dsonar.sources=. \
-            -Dsonar.inclusions=*/.js \
+            -Dsonar.inclusions=**/*.js \
             -Dsonar.host.url=http://201.23.3.86:8172 \
             -Dsonar.login=admin \
             -Dsonar.password=admin \
@@ -154,3 +154,4 @@ jobs:
             echo "-----------------------------------------------------"
             echo "Containers ativos:"
             docker ps
+            echo "-----------------------------------------------------"
