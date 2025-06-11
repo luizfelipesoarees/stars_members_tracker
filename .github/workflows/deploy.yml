@@ -126,6 +126,7 @@ jobs:
             docker pull "$FRONT_IMAGE"
             docker pull "$DB_IMAGE"
 
+            # Inicia o container do banco de dados
             docker run -d --name $DB_CONTAINER --network $NETWORK_NAME --restart always \
               -e POSTGRES_USER=stars_user \
               -e POSTGRES_PASSWORD=stars_password \
@@ -134,8 +135,13 @@ jobs:
               -v postgres_data:/var/lib/postgresql/data \
               "$DB_IMAGE"
 
-            echo "Aguardando o banco de dados iniciar..."
-            sleep 15
+            # ✅ A MUDANÇA ESTÁ AQUI: Aguarda o banco de dados ficar pronto
+            echo "Aguardando o banco de dados ficar 100% online..."
+            until docker exec $DB_CONTAINER pg_isready -U stars_user -d stars_db -q; do
+              echo "Banco de dados ainda iniciando, aguardando 2 segundos..."
+              sleep 2
+            done
+            echo "✅ Banco de dados pronto para conexões!"
 
             # Inicia o container do backend
             docker run -d --name $BACK_CONTAINER --network $NETWORK_NAME --restart always \
