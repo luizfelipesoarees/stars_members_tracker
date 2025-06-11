@@ -1,4 +1,4 @@
-name: Deploy Automatizado
+name: CI/CD Pipeline - Deploy com Docker Compose + SonarQube
 
 on:
   push:
@@ -6,79 +6,121 @@ on:
       - main
 
 jobs:
-  build-and-deploy:
+  build-and-push:
+    name: Build e Push das Imagens Docker
     runs-on: ubuntu-latest
-
-    env:
-      FRONT_IMAGE: luizfelipesoarees/stars_members_tracker-frontend
-      BACK_IMAGE: luizfelipesoarees/stars_members_tracker-backend
-      SERVER_IP: 201.23.3.86
-      SSH_USER: aluno
-      FRONT_PORT: 8171
-      BACK_PORT: 8170
-      DB_PORT: 8172
-
     steps:
       - name: Checkout do código
-        uses: actions/checkout@v3
+        uses: actions/checkout@v4
+
+      - name: Configurar QEMU
+        uses: docker/setup-qemu-action@v3
+
+      - name: Configurar Docker Buildx
+        uses: docker/setup-buildx-action@v3
 
       - name: Login no Docker Hub
-        run: echo "${{ secrets.DOCKER_HUB_TOKEN }}" | docker login -u "${{ secrets.DOCKER_HUB_USERNAME }}" --password-stdin
+        uses: docker/login-action@v3
+        with:
+          username: ${{ secrets.DOCKER_HUB_USERNAME }}
+          password: ${{ secrets.DOCKER_HUB_TOKEN }}
 
-      - name: Build do backend
-        run: docker build -t $BACK_IMAGE ./backend
+      - name: Build e Push da imagem do Backend
+        uses: docker/build-push-action@v5
+        with:
+          context: ./stars-api
+          push: true
+          tags: ${{ secrets.DOCKER_HUB_USERNAME }}/stars-members-tracker-backend:latest
 
-      - name: Build do frontend
-        run: docker build -t $FRONT_IMAGE ./frontend
+      - name: Build e Push da imagem do Frontend
+        uses: docker/build-push-action@v5
+        with:
+          context: ./stars-front
+          push: true
+          tags: ${{ secrets.DOCKER_HUB_USERNAME }}/stars-members-tracker-frontend:latest
 
-      - name: Push das imagens para o Docker Hub
-        run: |
-          docker push $BACK_IMAGE
-          docker push $FRONT_IMAGE
+  sonar-analysis:
+    name: Análise de Código com SonarQube
+    runs-on: ubuntu-latest
+    needs: build-and-push
+    steps:
+      - name: Checkout do código
+        uses: actions/checkout@v4
 
-      - name: SSH no servidor remoto e rodar SonarQube + deploy
+      - name: Iniciar SonarQube no servidor remoto
         uses: appleboy/ssh-action@v1.0.3
         with:
-          host: ${{ env.SERVER_IP }}
-          username: ${{ env.SSH_USER }}
+          host: ${{ secrets.REMOTE_HOST }}
+          username: ${{ secrets.REMOTE_USER }}
           key: ${{ secrets.SSH_PRIVATE_KEY }}
           script: |
-            # Parar containers antigos se existirem
-            docker rm -f frontend || true
-            docker rm -f backend || true
-            docker rm -f db || true
-            docker rm -f sonarqube || true
-
-            # Subir SonarQube em container temporário
-            docker run -d --name sonarqube -p 9000:9000 sonarqube:community
+            docker rm --force sonar_stars || true
+            docker run -d --name sonar_stars -p 8173:9000 sonarqube:lts-community
             echo "Aguardando SonarQube iniciar..."
-            sleep 60
+            sleep 100
 
-            # Rodar análise com sonar-scanner (você pode ter um script ou configurar localmente)
-            docker run --rm \
-              -e SONAR_HOST_URL="http://localhost:9000" \
-              -v $(pwd):/usr/src \
-              sonarsource/sonar-scanner-cli \
-              -Dsonar.projectKey=stars_members_tracker \
+      - name: Análise Backend com SonarScanner CLI
+        run: |
+          docker run --rm \
+            -v "${{ github.workspace }}:/usr/src" \
+            -w /usr/src/stars-api \
+            sonarsource/sonar-scanner-cli \
+            sonar-scanner \
+              -Dsonar.projectKey=stars-api \
               -Dsonar.sources=. \
-              -Dsonar.host.url=http://localhost:9000 \
+              -Dsonar.host.url=http://${{ secrets.REMOTE_HOST }}:8173 \
               -Dsonar.login=admin \
-              -Dsonar.password=admin
+              -Dsonar.password=admin \
+              -Dsonar.qualitygate.wait=true \
+              -Dsonar.sourceEncoding=UTF-8
 
-            # Verificar resultado
-            if curl -s http://localhost:9000/api/qualitygates/project_status?projectKey=stars_members_tracker | grep -q '"status":"OK"'; then
-              echo "Análise aprovada. Continuando com o deploy..."
-            else
-              echo "Análise reprovada pelo SonarQube. Abortando..."
-              docker rm -f sonarqube
-              exit 1
-            fi
+      - name: Análise Frontend com SonarScanner CLI
+        run: |
+          docker run --rm \
+            -v "${{ github.workspace }}:/usr/src" \
+            -w /usr/src/stars-front \
+            sonarsource/sonar-scanner-cli \
+            sonar-scanner \
+              -Dsonar.projectKey=stars-front \
+              -Dsonar.sources=. \
+              -Dsonar.host.url=http://${{ secrets.REMOTE_HOST }}:8173 \
+              -Dsonar.login=admin \
+              -Dsonar.password=admin \
+              -Dsonar.qualitygate.wait=true \
+              -Dsonar.sourceEncoding=UTF-8
 
-            # Parar e remover SonarQube
-            docker rm -f sonarqube
+      - name: Parar SonarQube
+        if: always()
+        uses: appleboy/ssh-action@v1.0.3
+        with:
+          host: ${{ secrets.REMOTE_HOST }}
+          username: ${{ secrets.REMOTE_USER }}
+          key: ${{ secrets.SSH_PRIVATE_KEY }}
+          script: docker rm --force sonar_stars || true
 
-            # Subir containers da aplicação
-            docker run -d --name db -e POSTGRES_PASSWORD=123456 -p $DB_PORT:5432 postgres:14-alpine
-            sleep 10
-            docker run -d --name backend -p $BACK_PORT:8170 $BACK_IMAGE
-            docker run -d --name frontend -p $FRONT_PORT:80 $FRONT_IMAGE
+  deploy:
+    name: Deploy no Servidor com Docker Compose
+    runs-on: ubuntu-latest
+    needs: sonar-analysis
+    steps:
+      - name: Copiar docker-compose.yml para o servidor e executar deploy
+        uses: appleboy/scp-action@v0.1.7
+        with:
+          host: ${{ secrets.REMOTE_HOST }}
+          username: ${{ secrets.REMOTE_USER }}
+          key: ${{ secrets.SSH_PRIVATE_KEY }}
+          source: ./docker-compose.yml
+          target: ~/stars/docker-compose.yml
+
+      - name: Rodar docker-compose no servidor
+        uses: appleboy/ssh-action@v1.0.3
+        with:
+          host: ${{ secrets.REMOTE_HOST }}
+          username: ${{ secrets.REMOTE_USER }}
+          key: ${{ secrets.SSH_PRIVATE_KEY }}
+          script: |
+            cd ~/stars
+            docker-compose pull
+            docker-compose down
+            docker-compose up -d
+            docker ps
