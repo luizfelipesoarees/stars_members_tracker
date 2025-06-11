@@ -1,4 +1,4 @@
-name: CI/CD Pipeline - Deploy com Docker Compose + SonarQube
+name: CI/CD Pipeline - Deploy sem Docker Compose + SonarQube
 
 on:
   push:
@@ -99,34 +99,54 @@ jobs:
           script: docker rm --force sonar_stars || true
 
   deploy:
-    name: Deploy no Servidor com Docker Compose
+    name: Deploy no Servidor com Docker Run
     runs-on: ubuntu-latest
     needs: sonar-analysis
     steps:
-      - name: Checkout do código
-        uses: actions/checkout@v4
-
-      - name: Listar arquivos antes do SCP (debug)
-        run: ls -l
-
-      - name: Copiar docker-compose.yml para o servidor
-        uses: appleboy/scp-action@v0.1.7
-        with:
-          host: ${{ secrets.REMOTE_HOST }}
-          username: ${{ secrets.REMOTE_USER }}
-          key: ${{ secrets.SSH_PRIVATE_KEY }}
-          source: docker-compose.yml
-          target: ~/stars/docker-compose.yml
-
-      - name: Rodar docker-compose no servidor
+      - name: Deploy com Docker direto (sem docker-compose)
         uses: appleboy/ssh-action@v1.0.3
         with:
           host: ${{ secrets.REMOTE_HOST }}
           username: ${{ secrets.REMOTE_USER }}
           key: ${{ secrets.SSH_PRIVATE_KEY }}
           script: |
-            cd ~/stars
-            docker-compose pull
-            docker-compose down
-            docker-compose up -d
+            echo "Parando containers antigos..."
+            docker rm -f frontend backend db || true
+
+            echo "Criando rede..."
+            docker network create app-network || true
+
+            echo "Subindo banco de dados..."
+            docker run -d \
+              --name db \
+              --network app-network \
+              -e POSTGRES_USER=stars_user \
+              -e POSTGRES_PASSWORD=stars_password \
+              -e POSTGRES_DB=stars_db \
+              -p 8172:5432 \
+              -v stars_db_data:/var/lib/postgresql/data \
+              postgres:14-alpine
+
+            echo "Subindo backend..."
+            docker run -d \
+              --name backend \
+              --network app-network \
+              -e DB_HOST=db \
+              -e DB_PORT=5432 \
+              -e DB_USER=stars_user \
+              -e DB_PASS=stars_password \
+              -e DB_NAME=stars_db \
+              -e APP_PORT=8170 \
+              -e NODE_ENV=production \
+              -p 8170:8170 \
+              ${{ secrets.DOCKER_HUB_USERNAME }}/stars-members-tracker-backend:latest
+
+            echo "Subindo frontend..."
+            docker run -d \
+              --name frontend \
+              --network app-network \
+              -p 8171:80 \
+              ${{ secrets.DOCKER_HUB_USERNAME }}/stars-members-tracker-frontend:latest
+
+            echo "Containers rodando:"
             docker ps
