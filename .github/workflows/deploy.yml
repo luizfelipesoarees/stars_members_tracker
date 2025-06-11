@@ -122,9 +122,9 @@ jobs:
             docker network create $NETWORK_NAME || true
             docker rm -f $BACK_CONTAINER $FRONT_CONTAINER $DB_CONTAINER || true
 
-            docker pull $BACK_IMAGE
-            docker pull $FRONT_IMAGE
-            docker pull $DB_IMAGE
+            docker pull "$BACK_IMAGE"
+            docker pull "$FRONT_IMAGE"
+            docker pull "$DB_IMAGE"
 
             docker run -d --name $DB_CONTAINER --network $NETWORK_NAME --restart always \
               -e POSTGRES_USER=stars_user \
@@ -132,24 +132,26 @@ jobs:
               -e POSTGRES_DB=stars_db \
               -p 8175:5432 \
               -v postgres_data:/var/lib/postgresql/data \
-              $DB_IMAGE
+              "$DB_IMAGE"
 
             echo "Aguardando o banco de dados iniciar..."
             sleep 15
 
+            # Inicia o container do backend
             docker run -d --name $BACK_CONTAINER --network $NETWORK_NAME --restart always \
-              -e DB_HOST=$DB_CONTAINER \ # <<< CORREÇÃO APLICADA AQUI
+              -e DB_HOST=$DB_CONTAINER \
               -e DB_PORT=5432 \
               -e DB_USER=stars_user \
               -e DB_PASS=stars_password \
               -e DB_NAME=stars_db \
               -e APP_PORT=8170 \
               -p 8170:8170 \
-              $BACK_IMAGE
+              "$BACK_IMAGE"
 
+            # Inicia o container do frontend
             docker run -d --name $FRONT_CONTAINER --network $NETWORK_NAME --restart always \
               -p 8171:80 \
-              $FRONT_IMAGE
+              "$FRONT_IMAGE"
 
             echo "-----------------------------------------------------"
             echo "Containers ativos:"
