@@ -12,7 +12,7 @@ const sequelize = new Sequelize(
   process.env.DB_USER || 'stars_user',
   process.env.DB_PASS || 'stars_password',
   {
-    host: process.env.DB_HOST || 'db',
+    host: process.env.DB_HOST || 'stars_db',
     port: process.env.DB_PORT || 5432,
     dialect: 'postgres',
     logging: false
