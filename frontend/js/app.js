@@ -1,4 +1,4 @@
-const API_URL = "http://localhost:8170/api/members";
+const API_BASE_URL = "http://201.23.3.86:8170/api";
 
 // DOM Elements
 const addMemberForm = document.getElementById("add-member-form");
