@@ -1,5 +1,4 @@
-const backendPort = "8170";
-const API_URL = `http://${window.location.hostname}:${backendPort}/api/members`;
+const API_URL = "http://201.23.3.86:8170/api/members";
 
 // DOM Elements
 const addMemberForm = document.getElementById("add-member-form");
