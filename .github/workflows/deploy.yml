@@ -1,177 +1,84 @@
-name: CI/CD Pipeline - Deploy Remoto com SonarQube
+name: Deploy Automatizado
 
 on:
   push:
-    branches: [ "main" ]
+    branches:
+      - main
 
 jobs:
-
-  build-push:
-    name: Build e Push das Imagens Docker
+  build-and-deploy:
     runs-on: ubuntu-latest
+
+    env:
+      FRONT_IMAGE: luizfelipesoarees/stars_members_tracker-frontend
+      BACK_IMAGE: luizfelipesoarees/stars_members_tracker-backend
+      SERVER_IP: 201.23.3.86
+      SSH_USER: aluno
+      FRONT_PORT: 8171
+      BACK_PORT: 8170
+      DB_PORT: 8172
+
     steps:
       - name: Checkout do código
         uses: actions/checkout@v3
 
       - name: Login no Docker Hub
-        uses: docker/login-action@v2
-        with:
-          username: ${{ secrets.DOCKER_HUB_USERNAME }}
-          password: ${{ secrets.DOCKER_HUB_TOKEN }}
+        run: echo "${{ secrets.DOCKER_PASSWORD }}" | docker login -u "${{ secrets.DOCKER_USERNAME }}" --password-stdin
 
-      - name: Build da imagem Docker backend
+      - name: Build do backend
+        run: docker build -t $BACK_IMAGE ./backend
+
+      - name: Build do frontend
+        run: docker build -t $FRONT_IMAGE ./frontend
+
+      - name: Push das imagens para o Docker Hub
         run: |
-          cd backend
-          docker build -t ${{ secrets.DOCKER_HUB_USERNAME }}/stars-members-tracker:latest .
+          docker push $BACK_IMAGE
+          docker push $FRONT_IMAGE
 
-      - name: Push da imagem Docker backend para Docker Hub
-        run: docker push ${{ secrets.DOCKER_HUB_USERNAME }}/stars-members-tracker:latest
-
-      - name: Build da imagem Docker frontend
-        run: |
-          cd frontend
-          docker build -t ${{ secrets.DOCKER_HUB_USERNAME }}/stars-members-tracker-frontend:latest .
-
-      - name: Push da imagem Docker frontend para Docker Hub
-        run: docker push ${{ secrets.DOCKER_HUB_USERNAME }}/stars-members-tracker-frontend:latest
-
-  sonar-analysis:
-    name: Análise de Código com SonarQube
-    runs-on: ubuntu-latest
-    needs: build-push
-    steps:
-      - name: Checkout do código
-        uses: actions/checkout@v4
-        with:
-          fetch-depth: 0
-
-      - name: Configurar JDK 17
-        uses: actions/setup-java@v4
-        with:
-          java-version: '17'
-          distribution: 'temurin'
-
-      - name: Setup Node.js (necessário para projetos JS)
-        uses: actions/setup-node@v3
-        with:
-          node-version: '18'
-
-      - name: Iniciar SonarQube no servidor remoto
+      - name: SSH no servidor remoto e rodar SonarQube + deploy
         uses: appleboy/ssh-action@v1.0.3
         with:
-          host: 201.23.3.86
-          username: aluno
+          host: ${{ env.SERVER_IP }}
+          username: ${{ env.SSH_USER }}
           key: ${{ secrets.SSH_PRIVATE_KEY }}
           script: |
-            docker stop sonarqube || true
-            docker rm sonarqube || true
-            docker run -d --name sonarqube -p 8172:9000 sonarqube:lts-community
+            # Parar containers antigos se existirem
+            docker rm -f frontend || true
+            docker rm -f backend || true
+            docker rm -f db || true
+            docker rm -f sonarqube || true
+
+            # Subir SonarQube em container temporário
+            docker run -d --name sonarqube -p 9000:9000 sonarqube:community
             echo "Aguardando SonarQube iniciar..."
-            sleep 100
+            sleep 60
 
-      - name: Download e Configuração do SonarScanner
-        run: |
-          wget https://binaries.sonarsource.com/Distribution/sonar-scanner-cli/sonar-scanner-cli-5.0.1.3006-linux.zip
-          unzip sonar-scanner-cli-5.0.1.3006-linux.zip
-          echo "$GITHUB_WORKSPACE/sonar-scanner-5.0.1.3006-linux/bin" >> $GITHUB_PATH
+            # Rodar análise com sonar-scanner (você pode ter um script ou configurar localmente)
+            docker run --rm \
+              -e SONAR_HOST_URL="http://localhost:9000" \
+              -v $(pwd):/usr/src \
+              sonarsource/sonar-scanner-cli \
+              -Dsonar.projectKey=stars_members_tracker \
+              -Dsonar.sources=. \
+              -Dsonar.host.url=http://localhost:9000 \
+              -Dsonar.login=admin \
+              -Dsonar.password=admin
 
-      - name: Análise do SonarQube
-        run: |
-          sonar-scanner \
-            -Dsonar.projectKey=stars-members-tracker \
-            -Dsonar.sources=. \
-            -Dsonar.inclusions=**/*.js \
-            -Dsonar.host.url=http://201.23.3.86:8172 \
-            -Dsonar.login=admin \
-            -Dsonar.password=admin \
-            -Dsonar.sourceEncoding=UTF-8
+            # Verificar resultado
+            if curl -s http://localhost:9000/api/qualitygates/project_status?projectKey=stars_members_tracker | grep -q '"status":"OK"'; then
+              echo "Análise aprovada. Continuando com o deploy..."
+            else
+              echo "Análise reprovada pelo SonarQube. Abortando..."
+              docker rm -f sonarqube
+              exit 1
+            fi
 
-      - name: Parar e remover container SonarQube
-        if: always()
-        uses: appleboy/ssh-action@v1.0.3
-        with:
-          host: 201.23.3.86
-          username: aluno
-          key: ${{ secrets.SSH_PRIVATE_KEY }}
-          script: |
-            docker stop sonarqube || true
-            docker rm sonarqube || true
-            sleep 30
+            # Parar e remover SonarQube
+            docker rm -f sonarqube
 
-  deploy-remote:
-    name: Deploy Remoto via Docker Run
-    runs-on: ubuntu-latest
-    needs: sonar-analysis
-    steps:
-      - name: SSH para o servidor e deploy da nova versão
-        uses: appleboy/ssh-action@v1.0.3
-        with:
-          host: 201.23.3.86
-          username: aluno
-          key: ${{ secrets.SSH_PRIVATE_KEY }}
-          script: |
-            BACK_IMAGE="${{ secrets.DOCKER_HUB_USERNAME }}/stars-members-tracker:latest"
-            FRONT_IMAGE="${{ secrets.DOCKER_HUB_USERNAME }}/stars-members-tracker-frontend:latest"
-            DB_IMAGE="postgres:15-alpine"
-
-            BACK_CONTAINER="stars-app"
-            FRONT_CONTAINER="stars-front"
-            DB_CONTAINER="stars-db"
-            NETWORK_NAME="stars-network"
-            
-            # ✅ NOVO: Define um caminho específico no servidor para os dados do banco
-            DB_DATA_PATH="/home/aluno/stars_postgres_data"
-
-            # Limpeza completa do ambiente antigo
-            docker network create $NETWORK_NAME || true
-            docker rm -f $BACK_CONTAINER $FRONT_CONTAINER $DB_CONTAINER || true
-            
-            # ✅ ALTERADO: Garante que a pasta de dados esteja limpa e exista
-            echo "--> Recriando a pasta de dados do host em $DB_DATA_PATH..."
-            rm -rf $DB_DATA_PATH
-            mkdir -p $DB_DATA_PATH
-
-            # Pull das imagens
-            docker pull "$BACK_IMAGE"
-            docker pull "$FRONT_IMAGE"
-            docker pull "$DB_IMAGE"
-
-            # Inicia o container do banco de dados
-            docker run -d --name $DB_CONTAINER --network $NETWORK_NAME --restart always \
-              -e POSTGRES_USER=stars_user \
-              -e POSTGRES_PASSWORD=stars_password \
-              -e POSTGRES_DB=stars_db \
-              -p 8175:5432 \
-              # ✅ ALTERADO: Usa o caminho do servidor (bind mount) em vez do volume nomeado
-              -v $DB_DATA_PATH:/var/lib/postgresql/data \
-              "$DB_IMAGE"
-
-            # Aguarda o banco de dados ficar 100% pronto
-            echo "--> Aguardando o banco de dados iniciar..."
-            until docker exec $DB_CONTAINER pg_isready -U stars_user -d stars_db -q; do
-              echo "Banco de dados ainda indisponível - aguardando..."
-              sleep 2
-            done
-            echo "✅ Banco de dados pronto para conexões."
-
-            # Inicia o container do backend
-            docker run -d --name $BACK_CONTAINER --network $NETWORK_NAME --restart always \
-              -e DB_HOST=$DB_CONTAINER \
-              -e DB_PORT=5432 \
-              -e DB_USER=stars_user \
-              -e DB_PASS=stars_password \
-              -e DB_NAME=stars_db \
-              -e APP_PORT=8170 \
-              -p 8170:8170 \
-              "$BACK_IMAGE"
-
-            # Inicia o container do frontend
-            docker run -d --name $FRONT_CONTAINER --network $NETWORK_NAME --restart always \
-              -p 8171:80 \
-              "$FRONT_IMAGE"
-
-            echo "-----------------------------------------------------"
-            echo "Containers ativos:"
-            docker ps
-            echo "-----------------------------------------------------"
- 
+            # Subir containers da aplicação
+            docker run -d --name db -e POSTGRES_PASSWORD=123456 -p $DB_PORT:5432 postgres:14-alpine
+            sleep 10
+            docker run -d --name backend -p $BACK_PORT:8170 $BACK_IMAGE
+            docker run -d --name frontend -p $FRONT_PORT:80 $FRONT_IMAGE

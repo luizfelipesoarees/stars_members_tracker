@@ -1,4 +1,10 @@
-const API_URL = "/api/members";
+const isLocalhost = window.location.hostname === "localhost" || window.location.hostname === "127.0.0.1";
+
+const API_URL = isLocalhost
+  ? "http://localhost:8170/api/members"
+  : "http://201.23.3.86:8170/api/members";
+
+
 
 // DOM Elements
 const addMemberForm = document.getElementById("add-member-form");

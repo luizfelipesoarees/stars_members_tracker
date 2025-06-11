@@ -2,37 +2,41 @@ version: '3.8'
 
 services:
   db:
-    image: postgres:15-alpine
+    image: postgres:14-alpine
+    container_name: db
     environment:
-      POSTGRES_USER: stars_user
-      POSTGRES_PASSWORD: stars_password
-      POSTGRES_DB: stars_db
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: 123456
     ports:
-      - "8175:5432"
+      - "8172:5432"
     volumes:
-      - pgdata:/var/lib/postgresql/data
+      - db_data:/var/lib/postgresql/data
+    networks:
+      - app-network
 
-  app:
-    build: ./backend
-    ports:
-      - "8170:8170"
+  backend:
+    image: luizfelipesoarees/stars_members_tracker-backend
+    container_name: backend
     depends_on:
       - db
-    environment:
-      DB_HOST: db
-      DB_PORT: 5432
-      DB_USER: stars_user
-      DB_PASS: stars_password
-      DB_NAME: stars_db
+    ports:
+      - "8170:8170"
+    networks:
+      - app-network
 
   frontend:
-    image: nginx:alpine
+    image: luizfelipesoarees/stars_members_tracker-frontend
+    container_name: frontend
+    depends_on:
+      - backend
     ports:
       - "8171:80"
-    volumes:
-      - ./frontend:/usr/share/nginx/html
-    depends_on:
-      - app
+    networks:
+      - app-network
 
 volumes:
-  pgdata:
+  db_data:
+
+networks:
+  app-network:
+    driver: bridge

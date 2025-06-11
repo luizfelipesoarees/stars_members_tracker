@@ -23,9 +23,7 @@ const Member = sequelize.define('Member', {
   name: {
     type: DataTypes.STRING,
     allowNull: false,
-    validate: {
-      notEmpty: true
-    }
+    validate: { notEmpty: true }
   },
   rank: {
     type: DataTypes.STRING,
@@ -34,9 +32,7 @@ const Member = sequelize.define('Member', {
   status: {
     type: DataTypes.STRING,
     defaultValue: 'active',
-    validate: {
-      isIn: [['active', 'missing', 'deceased']]
-    }
+    validate: { isIn: [['active', 'missing', 'deceased']] }
   },
   bio: {
     type: DataTypes.TEXT
@@ -45,20 +41,75 @@ const Member = sequelize.define('Member', {
   timestamps: true
 });
 
-// Middleware para tratamento de erros
-app.use((err, req, res, next) => {
-  console.error(err.stack);
-  res.status(500).json({ error: 'Something went wrong!' });
-});
-
-// CRUD routes...
-
 // Rota de teste
 app.get('/', (req, res) => {
   res.send('S.T.A.R.S. Members Tracker API - Resident Evil');
 });
 
-// 🔁 Aguarda banco de dados com retries
+// --- ROTAS CRUD ---
+
+// GET /api/members - listar todos membros
+app.get('/api/members', async (req, res) => {
+  try {
+    const members = await Member.findAll();
+    res.json(members);
+  } catch (error) {
+    res.status(500).json({ error: 'Erro ao buscar membros.' });
+  }
+});
+
+// GET /api/members/:id - buscar membro por id
+app.get('/api/members/:id', async (req, res) => {
+  try {
+    const member = await Member.findByPk(req.params.id);
+    if (!member) return res.status(404).json({ error: 'Membro não encontrado.' });
+    res.json(member);
+  } catch (error) {
+    res.status(500).json({ error: 'Erro ao buscar membro.' });
+  }
+});
+
+// POST /api/members - criar novo membro
+app.post('/api/members', async (req, res) => {
+  try {
+    const newMember = await Member.create(req.body);
+    res.status(201).json(newMember);
+  } catch (error) {
+    res.status(400).json({ error: 'Erro ao criar membro.', details: error.message });
+  }
+});
+
+// PUT /api/members/:id - atualizar membro existente
+app.put('/api/members/:id', async (req, res) => {
+  try {
+    const member = await Member.findByPk(req.params.id);
+    if (!member) return res.status(404).json({ error: 'Membro não encontrado.' });
+    await member.update(req.body);
+    res.json(member);
+  } catch (error) {
+    res.status(400).json({ error: 'Erro ao atualizar membro.', details: error.message });
+  }
+});
+
+// DELETE /api/members/:id - remover membro
+app.delete('/api/members/:id', async (req, res) => {
+  try {
+    const member = await Member.findByPk(req.params.id);
+    if (!member) return res.status(404).json({ error: 'Membro não encontrado.' });
+    await member.destroy();
+    res.json({ message: 'Membro removido com sucesso.' });
+  } catch (error) {
+    res.status(500).json({ error: 'Erro ao remover membro.' });
+  }
+});
+
+// Middleware para tratamento de erros
+app.use((err, req, res, next) => {
+  console.error(err.stack);
+  res.status(500).json({ error: 'Algo deu errado!' });
+});
+
+// Aguarda banco de dados com retries
 async function waitForDatabase(retries = 10, delay = 3000) {
   for (let i = 0; i < retries; i++) {
     try {
@@ -66,14 +117,14 @@ async function waitForDatabase(retries = 10, delay = 3000) {
       console.log('✅ Conexão com o banco de dados estabelecida com sucesso.');
       return;
     } catch (error) {
-      console.log(`Tentativa ${i + 1} de conexão falhou. Repetindo em ${delay / 1000}s...`);
+      console.log(`Tentativa ${i + 1} falhou. Repetindo em ${delay / 1000}s...`);
       await new Promise(res => setTimeout(res, delay));
     }
   }
-  throw new Error('❌ Falha ao conectar ao banco de dados após múltiplas tentativas.');
+  throw new Error('❌ Falha ao conectar ao banco após múltiplas tentativas.');
 }
 
-// 🚀 Inicia o servidor
+// Inicia o servidor
 async function startServer() {
   try {
     await waitForDatabase();
