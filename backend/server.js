@@ -133,7 +133,7 @@ async function startServer() {
     console.log('Database synchronized');
 
     const PORT = process.env.APP_PORT || 8170;
-    app.listen(PORT, () => {
+    app.listen(PORT, '0.0.0.0', () => {
       console.log(`Server running on port ${PORT}`);
     });
   } catch (error) {
