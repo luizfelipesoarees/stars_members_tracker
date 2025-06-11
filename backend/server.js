@@ -6,13 +6,12 @@ const app = express();
 app.use(cors({ origin: ['http://localhost:8171', 'http://201.23.3.86:8171'] }));
 app.use(express.json());
 
-// Database connection
 const sequelize = new Sequelize(
   process.env.DB_NAME || 'stars_db',
   process.env.DB_USER || 'stars_user',
   process.env.DB_PASS || 'stars_password',
   {
-    host: process.env.DB_HOST || 'stars-db',
+    host: process.env.DB_HOST || 'db',
     port: process.env.DB_PORT || 5432,
     dialect: 'postgres',
     logging: false
@@ -52,92 +51,41 @@ app.use((err, req, res, next) => {
   res.status(500).json({ error: 'Something went wrong!' });
 });
 
-// CRUD Routes
+// CRUD routes...
 
-// Create - Adicionar novo membro
-app.post('/api/members', async (req, res) => {
-  try {
-    const member = await Member.create(req.body);
-    res.status(201).json(member);
-  } catch (error) {
-    res.status(400).json({ error: error.message });
-  }
-});
-
-// Read - Listar todos os membros
-app.get('/api/members', async (req, res) => {
-  try {
-    const members = await Member.findAll();
-    res.json(members);
-  } catch (error) {
-    res.status(500).json({ error: 'Failed to fetch members' });
-  }
-});
-
-// Read - Obter um membro específico
-app.get('/api/members/:id', async (req, res) => {
-  try {
-    const member = await Member.findByPk(req.params.id);
-    if (!member) {
-      return res.status(404).json({ error: 'Member not found' });
-    }
-    res.json(member);
-  } catch (error) {
-    res.status(500).json({ error: 'Failed to fetch member' });
-  }
-});
-
-// Update - Atualizar um membro
-app.put('/api/members/:id', async (req, res) => {
-  try {
-    const [updated] = await Member.update(req.body, {
-      where: { id: req.params.id }
-    });
-    if (updated) {
-      const updatedMember = await Member.findByPk(req.params.id);
-      return res.json(updatedMember);
-    }
-    throw new Error('Member not found');
-  } catch (error) {
-    res.status(400).json({ error: error.message });
-  }
-});
-
-// Delete - Remover um membro
-app.delete('/api/members/:id', async (req, res) => {
-  try {
-    const deleted = await Member.destroy({
-      where: { id: req.params.id }
-    });
-    if (deleted) {
-      return res.json({ message: 'Member deleted' });
-    }
-    throw new Error('Member not found');
-  } catch (error) {
-    res.status(400).json({ error: error.message });
-  }
-});
-
-// Rota básica para teste
+// Rota de teste
 app.get('/', (req, res) => {
   res.send('S.T.A.R.S. Members Tracker API - Resident Evil');
 });
 
-// Sincronizar banco de dados e iniciar servidor
+// 🔁 Aguarda banco de dados com retries
+async function waitForDatabase(retries = 10, delay = 3000) {
+  for (let i = 0; i < retries; i++) {
+    try {
+      await sequelize.authenticate();
+      console.log('✅ Conexão com o banco de dados estabelecida com sucesso.');
+      return;
+    } catch (error) {
+      console.log(`Tentativa ${i + 1} de conexão falhou. Repetindo em ${delay / 1000}s...`);
+      await new Promise(res => setTimeout(res, delay));
+    }
+  }
+  throw new Error('❌ Falha ao conectar ao banco de dados após múltiplas tentativas.');
+}
+
+// 🚀 Inicia o servidor
 async function startServer() {
   try {
-    await sequelize.authenticate();
-    console.log('Connection to database has been established successfully.');
-
+    await waitForDatabase();
     await sequelize.sync({ alter: true });
-    console.log('Database synchronized');
+    console.log('✅ Banco de dados sincronizado');
 
     const PORT = process.env.APP_PORT || 8170;
     app.listen(PORT, '0.0.0.0', () => {
-      console.log(`Server running on port ${PORT}`);
+      console.log(`🚀 Servidor rodando na porta ${PORT}`);
     });
   } catch (error) {
-    console.error('Unable to connect to the database:', error);
+    console.error('❌ Erro ao iniciar o servidor:', error);
     process.exit(1);
   }
 }

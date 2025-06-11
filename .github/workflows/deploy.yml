@@ -118,27 +118,32 @@ jobs:
             FRONT_CONTAINER="stars-front"
             DB_CONTAINER="stars-db"
             NETWORK_NAME="stars-network"
+            
+            # ✅ NOVO: Define um caminho específico no servidor para os dados do banco
+            DB_DATA_PATH="/home/aluno/stars_postgres_data"
 
             # Limpeza completa do ambiente antigo
             docker network create $NETWORK_NAME || true
             docker rm -f $BACK_CONTAINER $FRONT_CONTAINER $DB_CONTAINER || true
             
-            # ✅ ESTA É A CORREÇÃO PRINCIPAL: REMOVE O VOLUME ANTIGO
-            echo "--> Removendo volume de dados antigo para forçar recriação com a senha correta..."
-            docker volume rm postgres_data || true
+            # ✅ ALTERADO: Garante que a pasta de dados esteja limpa e exista
+            echo "--> Recriando a pasta de dados do host em $DB_DATA_PATH..."
+            rm -rf $DB_DATA_PATH
+            mkdir -p $DB_DATA_PATH
 
             # Pull das imagens
             docker pull "$BACK_IMAGE"
             docker pull "$FRONT_IMAGE"
             docker pull "$DB_IMAGE"
 
-            # Inicia o container do banco de dados (agora com volume limpo)
+            # Inicia o container do banco de dados
             docker run -d --name $DB_CONTAINER --network $NETWORK_NAME --restart always \
               -e POSTGRES_USER=stars_user \
               -e POSTGRES_PASSWORD=stars_password \
               -e POSTGRES_DB=stars_db \
               -p 8175:5432 \
-              -v postgres_data:/var/lib/postgresql/data \
+              # ✅ ALTERADO: Usa o caminho do servidor (bind mount) em vez do volume nomeado
+              -v $DB_DATA_PATH:/var/lib/postgresql/data \
               "$DB_IMAGE"
 
             # Aguarda o banco de dados ficar 100% pronto
@@ -169,3 +174,4 @@ jobs:
             echo "Containers ativos:"
             docker ps
             echo "-----------------------------------------------------"
+ 
