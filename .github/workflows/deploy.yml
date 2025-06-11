@@ -154,4 +154,3 @@ jobs:
             echo "-----------------------------------------------------"
             echo "Containers ativos:"
             docker ps
-            echo "--
