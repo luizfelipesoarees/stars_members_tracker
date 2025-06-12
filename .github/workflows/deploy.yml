@@ -111,7 +111,7 @@ jobs:
           key: ${{ secrets.SSH_PRIVATE_KEY }}
           script: |
             echo "Parando containers antigos..."
-            docker rm -f frontend-stars-luiz backend-stars-luiz db || true
+            docker rm -f frontend-stars-luiz backend-stars-luiz luiz-db || true
 
             echo "Baixando atualização nos containers"
             docker pull ${{ secrets.DOCKER_HUB_USERNAME }}/stars-members-tracker-backend:latest
@@ -122,7 +122,7 @@ jobs:
 
             echo "Subindo banco de dados..."
             docker run -d \
-              --name db \
+              --name luiz-db \
               --network app-network \
               -e POSTGRES_USER=stars_user \
               -e POSTGRES_PASSWORD=stars_password \
@@ -135,7 +135,7 @@ jobs:
             docker run -d \
               --name backend-stars-luiz \
               --network app-network \
-              -e DB_HOST=db \
+              -e DB_HOST=luiz-db \
               -e DB_PORT=5432 \
               -e DB_USER=stars_user \
               -e DB_PASS=stars_password \
@@ -150,7 +150,7 @@ jobs:
               --name frontend-stars-luiz \
               --network app-network \
               -p 8171:80 \
-              ${{ secrets.DOCKER_HUB_USERNAME }}/stars-Dmembers-tracker-frontend:latest
+              ${{ secrets.DOCKER_HUB_USERNAME }}/stars-members-tracker-frontend:latest
 
             echo "Containers rodando:"
             docker ps
