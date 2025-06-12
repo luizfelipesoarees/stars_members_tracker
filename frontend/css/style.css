@@ -115,3 +115,25 @@ button {
     justify-content: space-between;
     margin-top: 10px;
 }
+
+/* 🔽 Ajuste apenas no mobile (com correção do campo "Nome") */
+@media (max-width: 600px) {
+    form {
+        display: flex;
+        flex-direction: column;
+        align-items: stretch;
+    }
+
+    form input,
+    form select,
+    form button {
+        width: 100%;
+        margin: 8px 0;
+        box-sizing: border-box; /* ✅ Garante que padding e border não estourem o tamanho */
+    }
+
+    /* Remove margem lateral específica do primeiro input */
+    form input:first-of-type {
+        margin-top: 0;
+    }
+}
